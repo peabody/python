@@ -100,6 +100,7 @@ class Player(object):
 
         if self.is_hit():
             print "Hit!"
+            App.sounds['bgm1'].stop()
             App.sounds['fart'].play()
             while App.sounds['fart'].status: pass
             sys.exit(1)
@@ -111,6 +112,7 @@ class Player(object):
         self.sprite.move(sf.Vector2({sf.Keyboard.LEFT: -1,
                                      sf.Keyboard.RIGHT: 1}[direction]
                                     *  self.sprite.texture_rectangle.width, 0))
+        App.sounds['tire1'].play()
 
     def move(self, direction):
         # check time delta to curb speed
@@ -170,7 +172,8 @@ class App(object):
         'fart': sf.Sound(sf.SoundBuffer.from_file('data/bigfart.wav')),
         'splat1': sf.Sound(sf.SoundBuffer.from_file('data/splat1.wav')),
         'splat2': sf.Sound(sf.SoundBuffer.from_file('data/splat2.wav')),
-        'bgm1': sf.Sound(sf.SoundBuffer.from_file('data/RP-InTheField.ogg'))
+        'bgm1': sf.Sound(sf.SoundBuffer.from_file('data/RP-InTheField.ogg')),
+        'tire1': sf.Sound(sf.SoundBuffer.from_file('data/screech.ogg')),
     }
 
     @staticmethod
@@ -193,7 +196,9 @@ class App(object):
         self.ground = self.get_ground()
         self.player = Player()
         self.clear()
+        App.sounds['bgm1'].loop = True
         App.sounds['bgm1'].play()
+        self.background = sf.Sprite(sf.Texture.from_file('data/background1.jpg'))
 
     def get_ground(self):
         r = sf.RectangleShape()
@@ -211,8 +216,12 @@ class App(object):
 
     def update(self):
         self.seconds = self.clock.restart().seconds
+
+        # game logic updates
         self.player.update()
         self.blob_group.update()
+        
+        self.window.draw(self.background)
         self.blob_group.draw(self.window)
         self.window.draw(self.ground)
         #self.window.draw(self.player.rectangle)
