@@ -38,7 +38,7 @@ def sub_rectangle(rect, amount=25):
                          rect.height - amount))
 
 class Blob(object):
-    def __init__(self, speed=None):
+    def __init__(self, speed=None, app=None):
         self.rectangle = sf.RectangleShape()
         r = self.rectangle
         r.size = sf.Vector2(10,10)
@@ -48,16 +48,19 @@ class Blob(object):
         r.origin = r.size / 2
         r.position = sf.Vector2(randint(0,App.WIDTH - 1),1)
         self.speed = speed if speed else (App.BLOB_SPEED * randint(1,10))
+        self.app = app if app else App.a
         
     def update(self):
         # move the blob down
-        distance = 5000 * App.a.seconds * self.speed
+        distance = 5000 * self.app.seconds * self.speed
+        distance = distance if distance > 0.01 else 0.01
         self.rectangle.position += sf.Vector2(0,distance)
 
 class BlobGroup(object):
-    def __init__(self, speed=None):
+    def __init__(self, speed=None, app=None):
         self.blobs = set()
         self.speed = speed if speed else App.BLOB_SPEED
+        self.app = app if app else App.a
 
     def __iter__(self):
         return iter(self.blobs)
@@ -69,6 +72,7 @@ class BlobGroup(object):
         for blob in self.blobs.copy():
             blob.update()
             if blob.rectangle.position.y > (App.HEIGHT - App.GROUND_HEIGHT):
+                App.sounds[['splat1','splat2'][randint(0,1)]].play()
                 self.blobs.remove(blob)        
 
     def draw(self, window):
@@ -76,25 +80,17 @@ class BlobGroup(object):
             window.draw(blob.rectangle)        
 
 class Player(object):
-    def __init__(self, speed=None):
+    def __init__(self, speed=None, app=None):
         texture = sf.Texture.from_file(pjoin('data','goof-car.png'))
         self.sprite = sf.Sprite(texture)
-        self.sprite
         self.sprite.position = sf.Vector2(App.WIDTH / 2,
                                           App.HEIGHT - App.GROUND_HEIGHT
                                           - App.PLY_HEIGHT / 2)
-        # r = sf.RectangleShape()
-        # r.size = sf.Vector2(App.PLY_WIDTH,App.PLY_HEIGHT)
-        # r.outline_color = sf.Color.BLACK
-        # r.outline_thickness = 2
-        # r.fill_color = sf.Color.BLUE
-        # r.origin = r.size / 2
-        # r.position = sf.Vector2(App.WIDTH / 2,
-        #                         App.HEIGHT - App.GROUND_HEIGHT
-        #                         - App.PLY_HEIGHT / 2)
-        # self.rectangle = r
+        self.color = sf.Color.RED
         self.tdelta = 0.
         self.speed = speed if speed else App.PLY_SPEED
+        self.flipped = False
+        self.app = app if app else App.a
 
     def update(self):
         if sf.Keyboard.is_key_pressed(sf.Keyboard.LEFT):
@@ -108,18 +104,32 @@ class Player(object):
             while App.sounds['fart'].status: pass
             sys.exit(1)
 
+    def flip_texture(self, direction):
+        self.sprite.scale(sf.Vector2(-1,1))
+        # move the sprite because mirror scaling moves texture
+        # rectangle one play width over
+        self.sprite.move(sf.Vector2({sf.Keyboard.LEFT: -1,
+                                     sf.Keyboard.RIGHT: 1}[direction]
+                                    *  self.sprite.texture_rectangle.width, 0))
+
     def move(self, direction):
         # check time delta to curb speed
-        self.tdelta += App.a.seconds
-        #r = self.rectangle
+        self.tdelta += self.app.seconds
         r = self.sprite
 
         if self.tdelta > self.speed:
             self.tdelta = 0.
             # TODO: parameterize movement amount
             if direction == sf.Keyboard.LEFT:
+                if self.flipped:
+                    self.flipped = False
+                    self.flip_texture(direction)
+                    
                 vector = sf.Vector2(-1,0)
             elif direction == sf.Keyboard.RIGHT:
+                if not self.flipped:
+                    self.flipped = True
+                    self.flip_texture(direction)
                 vector = sf.Vector2(1,0)
             r.position = r.position + vector
 
@@ -130,11 +140,11 @@ class Player(object):
     def is_out_of_bounds(self):
         #r = self.rectangle
         r = self.sprite
-        return r.position.x < 0 or (r.position.x + App.PLY_WIDTH) > App.WIDTH
+        return r.position.x < 0 or (r.position.x) > App.WIDTH
 
     def is_hit(self):
         player_bounds = sub_rectangle(self.sprite.global_bounds)
-        for blob in App.a.blob_group:
+        for blob in self.app.blob_group:
             blob_bounds = blob.rectangle.global_bounds
             if intersects(player_bounds, blob_bounds):
                 return True
@@ -142,7 +152,9 @@ class Player(object):
 
 class App(object):
     '''
-    Main app class.
+    Main app class.  Acts on a object tree structure for child objects
+    to obtain references to global assets and is responsible for
+    drawing.
     '''
         
     WIDTH = 800
@@ -156,13 +168,24 @@ class App(object):
 
     sounds = {
         'fart': sf.Sound(sf.SoundBuffer.from_file('data/bigfart.wav')),
+        'splat1': sf.Sound(sf.SoundBuffer.from_file('data/splat1.wav')),
+        'splat2': sf.Sound(sf.SoundBuffer.from_file('data/splat2.wav')),
+        'bgm1': sf.Sound(sf.SoundBuffer.from_file('data/RP-InTheField.ogg'))
     }
 
     @staticmethod
     def init():
         App.a = App()
+        App.a.setup()
         
-    def __init__(self):
+    def setup(self):
+        '''
+        This method is used to setup the app object rather
+        thin __init__ because some of these child objects expect
+        App.a to contain the global app reference upon construction
+        (unless an explicit app=app was passed in their arguments)
+        however, App.a isn't set until App.__init__ completes.
+        '''
         self.mode = sf.VideoMode(App.WIDTH, App.HEIGHT)
         self.window = sf.RenderWindow(self.mode, "Catch 'em")
         self.blob_group = BlobGroup()
@@ -170,6 +193,7 @@ class App(object):
         self.ground = self.get_ground()
         self.player = Player()
         self.clear()
+        App.sounds['bgm1'].play()
 
     def get_ground(self):
         r = sf.RectangleShape()
